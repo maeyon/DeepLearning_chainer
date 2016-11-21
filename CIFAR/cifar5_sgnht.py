@@ -15,36 +15,60 @@ def unpickle(file):
 train_data = []
 train_target = []
 
-for i in range(1, 6):
+for i in xrange(1, 6):
 	d = unpickle("cifar-10-batches-py/data_batch_{}".format(i))
-	train_data.extend(d["data"])
-	train_target.extend(d["labels"])
-
-d = unpickle("cifar-10-batches-py/test_batch")
-test_data = d["data"]
-test_target = d["labels"]
+	for j in xrange(len(d["data"])):
+		if d["labels"][j] in xrange(5):
+			train_data.append(d["data"][j])
+			train_target.append(d["labels"][j])
 
 train_data = np.array(train_data).astype(np.float32).reshape((len(train_data), 3, 32, 32))
 train_target = np.array(train_target).astype(np.int32)
-test_data = np.array(test_data).astype(np.float32).reshape((len(test_data), 3, 32, 32))
-test_target = np.array(test_target).astype(np.int32)
-
 train_data /= 255.0
-test_data /= 255.0
 
 train = chainer.datasets.TupleDataset(train_data, train_target)
-test = chainer.datasets.TupleDataset(test_data, test_target)
-
 train_iter = chainer.iterators.SerialIterator(train, 100)
+
+test_data = []
+test_target = []
+
+d = unpickle("cifar-10-batches-py/test_batch")
+for j in xrange(len(d["data"])):
+	if d["labels"][j] in xrange(5):
+		test_data.append(d["data"][j])
+		test_target.append(d["labels"][j])
+
+test_data = np.array(test_data).astype(np.float32).reshape((len(test_data), 3, 32, 32))
+test_target = np.array(test_target).astype(np.int32)
+test_data /= 255.0
+
+test = chainer.datasets.TupleDataset(test_data, test_target)
 test_iter = chainer.iterators.SerialIterator(test, 100, repeat=False, shuffle=False)
 
-class Cifar10(chainer.Chain):
+class SGNHT(chainer.optimizer.GradientMethod):
+    def __init__(self, h=0.01, A=0):
+        self.h = h
+        self.A = A
+    
+    def init_state(self, param, state):
+        state["p"] = np.random.randn(param.size)
+        state["xi"] = self.A
+    
+    def update_one_cpu(self, param, state):
+        p = state["p"]
+        xi = state["xi"]
+        p -= xi * p * self.h + param.grad.flatten() * self.h \
+        + np.sqrt(2 * self.A) * np.random.normal(0, self.h, param.size)
+        param.data += p.reshape(param.shape) * self.h
+        xi += (p.dot(p) / len(p) - 1) * self.h
+
+class Cifar(chainer.Chain):
 	def __init__(self):
-		super(Cifar10, self).__init__(
+		super(Cifar, self).__init__(
 		    conv1 = L.Convolution2D(3, 32, 3, pad=1),
 		    conv2 = L.Convolution2D(32, 32, 3, pad=1),
-		    l1 = L.Linear(None, 1024),
-		    l2 = L.Linear(None, 10))
+		    l1 = L.Linear(None, 512),
+		    l2 = L.Linear(None, 5))
 	
 	def __call__(self, x):
 		h = F.max_pooling_2d(F.relu(self.conv1(x)), 2)
@@ -53,12 +77,12 @@ class Cifar10(chainer.Chain):
 		return self.l2(h)
 		
 
-model = L.Classifier(Cifar10())
-optimizer = chainer.optimizers.Adam()
+model = L.Classifier(Cifar())
+optimizer = SGNHT()
 optimizer.setup(model)
 
 updater = training.StandardUpdater(train_iter, optimizer)
-trainer = training.Trainer(updater, (10, 'epoch'))
+trainer = training.Trainer(updater, (20, 'epoch'), 'SGNHT')
 
 trainer.extend(extensions.Evaluator(test_iter, model))
 trainer.extend(extensions.LogReport())
