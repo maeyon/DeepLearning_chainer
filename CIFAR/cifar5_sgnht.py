@@ -46,7 +46,7 @@ test = chainer.datasets.TupleDataset(test_data, test_target)
 test_iter = chainer.iterators.SerialIterator(test, 100, repeat=False, shuffle=False)
 
 class SGNHT(chainer.optimizer.GradientMethod):
-    def __init__(self, h=0.01, A=0):
+    def __init__(self, h=0.001, A=0):
         self.h = h
         self.A = A
     
@@ -82,7 +82,7 @@ optimizer = SGNHT()
 optimizer.setup(model)
 
 updater = training.StandardUpdater(train_iter, optimizer)
-trainer = training.Trainer(updater, (20, 'epoch'), 'SGNHT')
+trainer = training.Trainer(updater, (3, 'epoch'), 'SGNHT')
 
 trainer.extend(extensions.Evaluator(test_iter, model))
 trainer.extend(extensions.LogReport())

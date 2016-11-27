@@ -43,7 +43,7 @@ test_target = np.array(test_target).astype(np.int32)
 test_data /= 255.0
 
 test = chainer.datasets.TupleDataset(test_data, test_target)
-test_iter = chainer.iterators.SerialIterator(test, 100, repeat=False, shuffle=False)
+test_iter = chainer.iterators.SerialIterator(test, 10, repeat=False, shuffle=False)
 
 class SGMHD(chainer.optimizer.GradientMethod):
     def __init__(self, eta=0.1, eps=1e-8):
@@ -62,13 +62,15 @@ class SGMHD(chainer.optimizer.GradientMethod):
     
     def update_one_cpu(self, param, state):
         r = state["r"]
-        param.data += self.lr() * r.reshape(param.shape)
+        #param.data += self.lr() * r.reshape(param.shape)
         g = param.grad.flatten()
-        m = np.mean(g)
-        C = np.outer(g - m, g - m) / param.size
-        N = np.random.multivariate_normal(
-        np.zeros(param.size), C * self.lr())
-        r -= g * self.lr() + self.lr() * C.dot(r) + N
+        print g.size
+        #m = np.mean(g)
+        #C = np.outer(g - m, g - m) / param.size
+        #N = np.random.multivariate_normal(
+        #np.zeros(param.size), C * self.lr())
+        #r -= g * self.lr() + self.lr() * C.dot(r) + N
+        r -= g * self.lr()
 
 class Cifar(chainer.Chain):
 	def __init__(self):
@@ -90,7 +92,7 @@ optimizer = SGMHD()
 optimizer.setup(model)
 
 updater = training.StandardUpdater(train_iter, optimizer)
-trainer = training.Trainer(updater, (20, 'epoch'), 'SGHMC')
+trainer = training.Trainer(updater, (1, 'iteration'), 'SGHMC')
 
 trainer.extend(extensions.Evaluator(test_iter, model))
 trainer.extend(extensions.LogReport())
