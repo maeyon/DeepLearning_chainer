@@ -23,13 +23,13 @@ class Mnist(chainer.Chain):
         return self.l3(h2)
 
 class SGLD(chainer.optimizer.GradientMethod):
-    def __init__(self, eta=0.8, eps=1e-4, delta=1e-6):
+    def __init__(self, eta=0.1, eps=1e-4, T=1e-4):
         self.eta = eta
         self.eps = eps
-        self.delta = delta
+        self.T = T
     
     def lr(self):
-        lr = self.eta / np.power(1.0 + self.t, 0.55)
+        lr = self.eta / np.power(1. + self.t, 0.55)
         if lr > self.eps:
         	return lr
         else:
@@ -37,17 +37,17 @@ class SGLD(chainer.optimizer.GradientMethod):
     
     def update_one_cpu(self, param, state):
         g = param.grad
-        param.data -= 0.5 * self.lr() * g + self.delta * np.random.normal(0, self.lr(), g.shape).astype(g.dtype)
+        param.data -= 0.5 * self.lr() * g + self.T * np.random.normal(0, self.lr(), g.shape).astype(g.dtype)
 
 model = L.Classifier(Mnist())
-optimizer = chainer.optimizers.SGD()
+optimizer = SGLD()
 optimizer.setup(model)
 
 updater = training.StandardUpdater(train_iter, optimizer)
 trainer = training.Trainer(updater, (20, 'epoch'), out='SGLD')
 
 trainer.extend(extensions.Evaluator(test_iter, model))
-trainer.extend(extensions.LogReport())
+trainer.extend(extensions.LogReport(log_name='log_t'))
 trainer.extend(extensions.PrintReport(
 ['epoch', 'main/loss', 'validation/main/loss', 'main/accuracy', 'validation/main/accuracy']))
 trainer.extend(extensions.ProgressBar())
