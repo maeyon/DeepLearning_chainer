@@ -39,7 +39,7 @@ class SGLD(chainer.optimizer.GradientMethod):
         g = param.grad
         param.data -= 0.5 * self.lr() * g + self.T * np.random.normal(0, self.lr(), g.shape).astype(g.dtype)
 
-model = L.Classifier(Mnist())
+model = ce.ClassifierEntr(Mnist())
 optimizer = SGLD()
 optimizer.setup(model)
 
@@ -47,7 +47,7 @@ updater = training.StandardUpdater(train_iter, optimizer)
 trainer = training.Trainer(updater, (20, 'epoch'), out='SGLD')
 
 trainer.extend(extensions.Evaluator(test_iter, model))
-trainer.extend(extensions.LogReport(log_name='log_t'))
+trainer.extend(extensions.LogReport(log_name='log_tt'))
 trainer.extend(extensions.PrintReport(
 ['epoch', 'main/loss', 'validation/main/loss', 'main/accuracy', 'validation/main/accuracy']))
 trainer.extend(extensions.ProgressBar())
