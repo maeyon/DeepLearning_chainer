@@ -4,16 +4,26 @@ import chainer.functions as F
 import chainer.links as L
 from chainer import training
 from chainer.training import extensions
+import original as O
 
 train, test = chainer.datasets.get_mnist()
-#train_iter = chainer.iterators.SerialIterator(train, 100)
-#test_iter = chainer.iterators.SerialIterator(test, 100, repeat=False, shuffle=False)
+
+np.save('bayesian.npy', np.zeros(len(test) * 10).reshape(len(test), 10))
+with open('accuracy.csv', 'w'):
+    pass
+label = []
+for i in xrange(len(test)):
+    label.append(test[i][-1])
+label = np.array(label).astype(np.int32)
+
+train_iter = chainer.iterators.SerialIterator(train, 100)
+test_iter = chainer.iterators.SerialIterator(test, len(test), repeat=False, shuffle=False)
 
 class Mnist(chainer.Chain):
     def __init__(self):
         super(Mnist, self).__init__(
-            l1 = L.Linear(None, 1000),
-            l2 = L.Linear(None, 1000),
+            l1 = L.Linear(None, 500),
+            l2 = L.Linear(None, 500),
             l3 = L.Linear(None, 10),
         )
     
@@ -23,51 +33,42 @@ class Mnist(chainer.Chain):
         return self.l3(h2)
 
 class SGNHT(chainer.optimizer.GradientMethod):
-    def __init__(self, h=0.0001, A=0):
+    def __init__(self, h=0.001, A=1e-3, wei=1e-5):
         self.h = h
         self.A = A
+        self.wei = wei
     
     def init_state(self, param, state):
-        state["p"] = np.random.randn(param.size)
+        state["p"] = np.zeros_like(param.data)
         state["xi"] = self.A
     
     def update_one_cpu(self, param, state):
         p = state["p"]
         xi = state["xi"]
-        p -= xi * p * self.h + param.grad.flatten() * self.h \
-        + np.sqrt(2 * self.A) * np.random.normal(0, self.h, param.size)
-        param.data += p.reshape(param.shape) * self.h
-        xi += (p.dot(p) / len(p) - 1) * self.h
+        p -= xi * p * self.h + (param.grad + self.wei * param.data) * self.h \
+        + np.sqrt(2 * self.A * self.h) * np.random.randn(param.size).reshape(param.shape)
+        param.data += p * self.h
+        xi += (np.sum(p * p) / len(p) - 1) * self.h
 
-for i in [0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1]:
-    print "h =", i
-    train_iter = chainer.iterators.SerialIterator(train, 100)
-    test_iter = chainer.iterators.SerialIterator(test, 100, repeat=False, shuffle=False)
-    model = L.Classifier(Mnist())
-    optimizer = SGNHT(h=i)
-    optimizer.setup(model)
-    
-    updater = training.StandardUpdater(train_iter, optimizer)
-    trainer = training.Trainer(updater, (5, 'epoch'), out='SGNHT')
-    
-    trainer.extend(extensions.Evaluator(test_iter, model))
-    trainer.extend(extensions.LogReport(log_name="log_{}".format(i)))
-    trainer.extend(extensions.PrintReport(
-            ['epoch', 'main/loss', 'validation/main/loss', 'main/accuracy', 'validation/main/accuracy']))
-    trainer.extend(extensions.ProgressBar())
-    
-    trainer.run()
-#model = L.Classifier(Mnist())
-#optimizer = chainer.optimizers.SGD()
-#optimizer.setup(model)
+model = O.Classifier(Mnist())
+optimizer = SGNHT()
+optimizer.setup(model)
 
-#updater = training.StandardUpdater(train_iter, optimizer)
-#trainer = training.Trainer(updater, (20, 'epoch'), out='SGNHT')
+updater = training.StandardUpdater(train_iter, optimizer)
+trainer = training.Trainer(updater, (30, 'epoch'), out='SGNHT')
 
-#trainer.extend(extensions.Evaluator(test_iter, model))
-#trainer.extend(extensions.LogReport())
-#trainer.extend(extensions.PrintReport(
-#['epoch', 'main/loss', 'validation/main/loss', 'main/accuracy', 'validation/main/accuracy']))
-#trainer.extend(extensions.ProgressBar())
+trainer.extend(extensions.Evaluator(test_iter, model))
+trainer.extend(extensions.LogReport())
+trainer.extend(extensions.PrintReport(
+['epoch', 'main/loss', 'validation/main/loss', 'main/accuracy', 'validation/main/accuracy']))
+trainer.extend(extensions.ProgressBar())
+trainer.extend(O.BysAccuracy(label))
 
-#trainer.run()
+trainer.run()
+
+p = np.load('bayesian.npy').astype(np.float32)
+p /= p.sum(axis=1, keepdims=True)
+y = p.argmax(axis=1)
+p[p < 1e-30] = 1e-30
+entropy = -np.sum(p * np.log(p), axis=1)
+np.savetxt('SGDdata.csv', np.vstack([entropy, y, label]).T, delimiter=',')

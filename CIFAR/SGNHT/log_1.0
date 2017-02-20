@@ -1,0 +1,26 @@
+[
+    {
+        "main/loss": NaN, 
+        "validation/main/loss": NaN, 
+        "iteration": 250, 
+        "epoch": 1, 
+        "main/accuracy": 0.20044000017642974, 
+        "validation/main/accuracy": 0.20000000014901162
+    }, 
+    {
+        "main/loss": NaN, 
+        "validation/main/loss": NaN, 
+        "iteration": 500, 
+        "epoch": 2, 
+        "main/accuracy": 0.20000000005960464, 
+        "validation/main/accuracy": 0.20000000014901162
+    }, 
+    {
+        "main/loss": NaN, 
+        "validation/main/loss": NaN, 
+        "iteration": 750, 
+        "epoch": 3, 
+        "main/accuracy": 0.199999999538064, 
+        "validation/main/accuracy": 0.20000000014901162
+    }
+]

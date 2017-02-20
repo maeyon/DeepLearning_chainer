@@ -27,7 +27,7 @@ train_target = np.array(train_target).astype(np.int32)
 train_data /= 255.0
 
 train = chainer.datasets.TupleDataset(train_data, train_target)
-train_iter = chainer.iterators.SerialIterator(train, 100)
+#train_iter = chainer.iterators.SerialIterator(train, 100)
 
 test_data = []
 test_target = []
@@ -43,10 +43,10 @@ test_target = np.array(test_target).astype(np.int32)
 test_data /= 255.0
 
 test = chainer.datasets.TupleDataset(test_data, test_target)
-test_iter = chainer.iterators.SerialIterator(test, 100, repeat=False, shuffle=False)
+#test_iter = chainer.iterators.SerialIterator(test, 100, repeat=False, shuffle=False)
 
 class SGNHT(chainer.optimizer.GradientMethod):
-    def __init__(self, h=0.001, A=0):
+    def __init__(self, h=0.0001, A=0):
         self.h = h
         self.A = A
     
@@ -76,18 +76,37 @@ class Cifar(chainer.Chain):
 		h = F.dropout(F.relu(self.l1(h)))
 		return self.l2(h)
 		
+for i in [0.001, 0.01, 0.05, 0.1, 0.5, 1.0]:
+    print "h =", i
+    train_iter = chainer.iterators.SerialIterator(train, 100)
+    test_iter = chainer.iterators.SerialIterator(test, 100, repeat=False, shuffle=False)
+    
+    model = L.Classifier(Cifar())
+    optimizer = SGNHT(h=i)
+    optimizer.setup(model)
+    
+    updater = training.StandardUpdater(train_iter, optimizer)
+    trainer = training.Trainer(updater, (3, 'epoch'), 'SGNHT')
+    
+    trainer.extend(extensions.Evaluator(test_iter, model))
+    trainer.extend(extensions.LogReport(log_name="log_{}".format(i)))
+    trainer.extend(extensions.PrintReport(
+            ['epoch', 'main/loss', 'validation/main/loss', 'main/accuracy', 'validation/main/accuracy']))
+    trainer.extend(extensions.ProgressBar())
+    
+    trainer.run()
+    
+#model = L.Classifier(Cifar())
+#optimizer = SGNHT()
+#optimizer.setup(model)
 
-model = L.Classifier(Cifar())
-optimizer = SGNHT()
-optimizer.setup(model)
+#updater = training.StandardUpdater(train_iter, optimizer)
+#trainer = training.Trainer(updater, (3, 'epoch'), 'SGNHT')
 
-updater = training.StandardUpdater(train_iter, optimizer)
-trainer = training.Trainer(updater, (3, 'epoch'), 'SGNHT')
+#trainer.extend(extensions.Evaluator(test_iter, model))
+#trainer.extend(extensions.LogReport())
+#trainer.extend(extensions.PrintReport(
+#['epoch', 'main/loss', 'validation/main/loss', 'main/accuracy', 'validation/main/accuracy']))
+#trainer.extend(extensions.ProgressBar())
 
-trainer.extend(extensions.Evaluator(test_iter, model))
-trainer.extend(extensions.LogReport())
-trainer.extend(extensions.PrintReport(
-['epoch', 'main/loss', 'validation/main/loss', 'main/accuracy', 'validation/main/accuracy']))
-trainer.extend(extensions.ProgressBar())
-
-trainer.run()
+#trainer.run()
