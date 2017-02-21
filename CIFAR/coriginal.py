@@ -105,7 +105,7 @@ class BysAccuracy(chainer.training.extensions.Evaluator):
         self.t = label
         
     def __call__(self, trainer=None):
-        p = xp.load('bayesian.npy').astype(np.float32)
+        p = xp.load('bayesian.npy').astype(xp.float32)
         ac = (p.argmax(axis=1) == self.t).mean()
         with open('accuracy.csv', 'a') as f:
             f.write('{}\n'.format(ac))

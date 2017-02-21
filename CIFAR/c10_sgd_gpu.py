@@ -1,7 +1,7 @@
 import chainer
 import chainer.functions as F
 import chainer.links as L
-from chainer import cupy
+from chainer import cuda
 from chainer import training
 from chainer.training import extensions
 import coriginal as C
@@ -88,4 +88,4 @@ p /= p.sum(axis=1, keepdims=True)
 y = p.argmax(axis=1)
 p[p < 1e-30] = 1e-30
 entropy = -xp.sum(p * xp.log(p), axis=1)
-xp.savetxt('SGDdata.csv', xp.vstack([entropy, y, test_target]).T, delimiter=',')
+xp.save('SGDdata.npy', xp.vstack([entropy, y, test_target]).T)

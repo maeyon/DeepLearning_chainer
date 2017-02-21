@@ -1,7 +1,7 @@
 import chainer
 import chainer.functions as F
 import chainer.links as L
-from chainer import cupy
+from chainer import cuda
 from chainer import training
 from chainer.training import extensions
 import coriginal as C
@@ -95,7 +95,7 @@ optimizer = SGLD()
 optimizer.setup(model)
 
 updater = training.StandardUpdater(train_iter, optimizer, device=0)
-trainer = training.Trainer(updater, (100, 'epoch'), 'SGD10')
+trainer = training.Trainer(updater, (50, 'epoch'), 'SGLD10')
 
 trainer.extend(extensions.Evaluator(test_iter, model, device=0))
 trainer.extend(extensions.LogReport())
@@ -112,4 +112,4 @@ p /= p.sum(axis=1, keepdims=True)
 y = p.argmax(axis=1)
 p[p < 1e-30] = 1e-30
 entropy = -xp.sum(p * xp.log(p), axis=1)
-xp.savetxt('SGDdata.csv', xp.vstack([entropy, y, test_target]).T, delimiter=',')
+xp.save('SGLDdata.npy', xp.vstack([entropy, y, test_target]).T)
