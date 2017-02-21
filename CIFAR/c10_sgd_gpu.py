@@ -1,10 +1,12 @@
-import numpy as np
 import chainer
 import chainer.functions as F
 import chainer.links as L
+from chainer import cupy
 from chainer import training
 from chainer.training import extensions
 import original as O
+
+xp = cuda.cupy
 
 def unpickle(file):
 	import cPickle
@@ -21,8 +23,8 @@ for i in xrange(1, 6):
 	train_data.extend(d["data"])
 	train_target.extend(d["labels"])
 
-train_data = np.array(train_data).astype(np.float32).reshape((len(train_data), 3, 32, 32))
-train_target = np.array(train_target).astype(np.int32)
+train_data = xp.array(train_data).astype(xp.float32).reshape((len(train_data), 3, 32, 32))
+train_target = xp.array(train_target).astype(xp.int32)
 train_data /= 255.0
 
 train = chainer.datasets.TupleDataset(train_data, train_target)
@@ -35,14 +37,14 @@ d = unpickle("cifar-10-batches-py/test_batch")
 test_data.extend(d["data"])
 test_target.extend(d["labels"])
 
-test_data = np.array(test_data).astype(np.float32).reshape((len(test_data), 3, 32, 32))
-test_target = np.array(test_target).astype(np.int32)
+test_data = xp.array(test_data).astype(xp.float32).reshape((len(test_data), 3, 32, 32))
+test_target = xp.array(test_target).astype(xp.int32)
 test_data /= 255.0
 
 test = chainer.datasets.TupleDataset(test_data, test_target)
 test_iter = chainer.iterators.SerialIterator(test, len(test_data), repeat=False, shuffle=False)
 
-np.save('bayesian.npy', np.zeros(len(test_data) * 10).reshape(len(test_data), 10))
+xp.save('bayesian.npy', xp.zeros(len(test_data) * 10).reshape(len(test_data), 10))
 with open('accuracy.csv', 'w'):
     pass
 
@@ -63,13 +65,15 @@ class Cifar(chainer.Chain):
 		
 
 model = O.Classifier(Cifar())
+cuda.get_device(0).use()
+model.to_gpu()
 optimizer = chainer.optimizers.SGD()
 optimizer.setup(model)
 
-updater = training.StandardUpdater(train_iter, optimizer)
-trainer = training.Trainer(updater, (20, 'epoch'), 'SGD10')
+updater = training.StandardUpdater(train_iter, optimizer, device=0)
+trainer = training.Trainer(updater, (100, 'epoch'), 'SGD10')
 
-trainer.extend(extensions.Evaluator(test_iter, model))
+trainer.extend(extensions.Evaluator(test_iter, model, device=0))
 trainer.extend(extensions.LogReport())
 trainer.extend(extensions.PrintReport(
 ['epoch', 'main/loss', 'validation/main/loss', 'main/accuracy', 'validation/main/accuracy']))
@@ -79,9 +83,9 @@ trainer.extend(O.BysAccuracy(test_target))
 
 trainer.run()
 
-p = np.load('bayesian.npy').astype(np.float32)
+p = xp.load('bayesian.npy').astype(xp.float32)
 p /= p.sum(axis=1, keepdims=True)
 y = p.argmax(axis=1)
 p[p < 1e-30] = 1e-30
-entropy = -np.sum(p * np.log(p), axis=1)
-np.savetxt('SGDdata.csv', np.vstack([entropy, y, test_target]).T, delimiter=',')
+entropy = -xp.sum(p * xp.log(p), axis=1)
+xp.savetxt('SGDdata.csv', xp.vstack([entropy, y, test_target]).T, delimiter=',')
