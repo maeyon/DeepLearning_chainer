@@ -4,7 +4,7 @@ import chainer.links as L
 from chainer import cupy
 from chainer import training
 from chainer.training import extensions
-import original as O
+import coriginal as C
 
 xp = cuda.cupy
 
@@ -64,7 +64,7 @@ class Cifar(chainer.Chain):
 		return self.l2(h)
 		
 
-model = O.Classifier(Cifar())
+model = C.Classifier(Cifar())
 cuda.get_device(0).use()
 model.to_gpu()
 optimizer = chainer.optimizers.SGD()
@@ -78,8 +78,8 @@ trainer.extend(extensions.LogReport())
 trainer.extend(extensions.PrintReport(
 ['epoch', 'main/loss', 'validation/main/loss', 'main/accuracy', 'validation/main/accuracy']))
 trainer.extend(extensions.ProgressBar())
-trainer.extend(O.Validation(test_iter, model))
-trainer.extend(O.BysAccuracy(test_target))
+trainer.extend(C.Validation(test_iter, model))
+trainer.extend(C.BysAccuracy(test_target))
 
 trainer.run()
 
