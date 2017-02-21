@@ -92,7 +92,7 @@ class SGLD(chainer.optimizer.GradientMethod):
         cuda.elementwise(
             'T grad, T lr, T weight, T gauss',
             'T param',
-            'param -= 0.5 * lr * (500 * grad + weight * param) + gauss;'
+            'param -= 0.5 * lr * (500 * grad + weight * param) + gauss;',
             'sgld')(param.grad, self.lr, self.weight, gauss, param.data)
 
 model = C.Classifier(Cifar())

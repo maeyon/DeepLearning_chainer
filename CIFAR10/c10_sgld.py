@@ -86,7 +86,7 @@ class SGLD(chainer.optimizer.GradientMethod):
         cuda.elementwise(
             'T grad, T lr, T weight, T gauss',
             'T param',
-            'param -= 0.5 * lr * (500 * grad + weight * param) + gauss;'
+            'param -= 0.5 * lr * (500 * grad + weight * param) + gauss;',
             'sgld')(param.grad, self.lr, self.weight, gauss, param.data)
 
 model = C.Classifier(Cifar())
@@ -96,7 +96,7 @@ optimizer = SGLD()
 optimizer.setup(model)
 
 updater = training.StandardUpdater(train_iter, optimizer, device=0)
-trainer = training.Trainer(updater, (50, 'epoch'), 'SGLD10')
+trainer = training.Trainer(updater, (50, 'epoch'), 'SGLD')
 
 trainer.extend(extensions.Evaluator(test_iter, model, device=0))
 trainer.extend(extensions.LogReport())

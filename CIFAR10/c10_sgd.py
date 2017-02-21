@@ -71,7 +71,7 @@ optimizer = chainer.optimizers.SGD()
 optimizer.setup(model)
 
 updater = training.StandardUpdater(train_iter, optimizer, device=0)
-trainer = training.Trainer(updater, (50, 'epoch'), 'SGD10')
+trainer = training.Trainer(updater, (50, 'epoch'), 'SGD')
 
 trainer.extend(extensions.Evaluator(test_iter, model, device=0))
 trainer.extend(extensions.LogReport())
