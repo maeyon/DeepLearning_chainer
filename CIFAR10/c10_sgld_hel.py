@@ -88,7 +88,7 @@ class SGLD(chainer.optimizer.GradientMethod):
         param.data -= 0.5 * self.lr * (500 * g + self.weight * param.data) + np.random.normal(0, self.lr, g.shape)
         
     def update_one_gpu(self, param, state):
-        gauss = xp.random.normal(0, self.lr, param.shape)
+        gauss = xp.random.normal(0, self.lr, param.shape).astype(xp.float32)
         cuda.elementwise(
             'T grad, T lr, T weight, T gauss',
             'T param',
