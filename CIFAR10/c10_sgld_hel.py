@@ -55,7 +55,7 @@ class Cifar(chainer.Chain):
             conv1 = L.Convolution2D(3, 32, 3, pad=1),
             conv2 = L.Convolution2D(32, 32, 3, pad=1),
             l1 = L.Linear(None, 512),
-            l2 = L.Linear(None, 5),
+            l2 = L.Linear(None, 10),
             bnorm1 = L.BatchNormalization(32),
             bnorm2 = L.BatchNormalization(32))
         
