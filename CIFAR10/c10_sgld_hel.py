@@ -1,6 +1,8 @@
+import numpy as np
 import chainer
 import chainer.functions as F
 import chainer.links as L
+import chainer.serializers as S
 from chainer import cuda
 from chainer import training
 from chainer.training import extensions
@@ -29,6 +31,7 @@ train_data /= 255.0
 
 train = chainer.datasets.TupleDataset(train_data, train_target)
 train_iter = chainer.iterators.SerialIterator(train, 100)
+train_entr_iter = chainer.iterators.SerialIterator(train, len(train), repeat=False, shuffle=False)
 
 test_data = []
 test_target = []
@@ -44,9 +47,9 @@ test_data /= 255.0
 test = chainer.datasets.TupleDataset(test_data, test_target)
 test_iter = chainer.iterators.SerialIterator(test, len(test_data), repeat=False, shuffle=False)
 
-xp.save('bayesian.npy', xp.zeros(len(test_data) * 10).reshape(len(test_data), 10))
-with open('accuracy.csv', 'w'):
-    pass
+xp.save('bayesian.npy', xp.zeros(len(train_data) * 10).reshape(len(train_data), 10))
+#with open('accuracy.csv', 'w'):
+#    pass
 
 
 class Cifar(chainer.Chain):
@@ -109,8 +112,8 @@ trainer.extend(extensions.LogReport())
 trainer.extend(extensions.PrintReport(
 ['epoch', 'main/loss', 'validation/main/loss', 'main/accuracy', 'validation/main/accuracy']))
 trainer.extend(extensions.ProgressBar())
-trainer.extend(C.Validation(test_iter, model))
-trainer.extend(C.BysAccuracy(test_target))
+trainer.extend(C.Validation(train_entr_iter, model))
+#trainer.extend(C.BysAccuracy(test_target))
 
 trainer.run()
 
@@ -121,20 +124,49 @@ p[p < 1e-30] = 1e-30
 entropy = -xp.sum(p * xp.log(p), axis=1)
 xp.save('SGLDdata.npy', xp.vstack([entropy, y, test_target]).T)
 
-index = xp.argsort(entropy)[-1:-1001:-1]
+entropy_cpu = cuda.to_cpu(entropy)
+index_cpu = np.argsort(entropy_cpu)
+index = cuda.to_gpu(index_cpu, device=0)
 
-train = chainer.datasets.TupleDataset(test_data[index], train_target[index])
+S.save_npz('learned_model', model)
+S.save_npz('learned_opt', optimizer)
+
+for i in xrange(1, 5):
+    train = chainer.datasets.TupleDataset(train_data[index[-1:-10000*i-1:-1]], train_target[index[-1:-10000*i-1:-1]])
+    train_iter = chainer.iterators.SerialIterator(train, 100)
+    test_iter = chainer.iterators.SerialIterator(test, len(test_data), repeat=False, shuffle=False)
+
+    S.load_npz('learned_model', model)
+    S.load_npz('learned_opt', optimizer)
+
+    updater = training.StandardUpdater(train_iter, optimizer)
+    trainer = training.Trainer(updater, (100, 'epoch'), 'HEL')
+
+    trainer.extend(extensions.Evaluator(test_iter, model))
+    trainer.extend(extensions.LogReport(log_name='hel_{}'.format(i)))
+    trainer.extend(extensions.PrintReport(['epoch', 'main/loss', 'validation/main/loss', 'main/accuracy', 'validation/main/accuracy']))
+    trainer.extend(extensions.ProgressBar())
+    #trainer.extend(O.Validation(test_iter, model))
+    #trainer.extend(O.BysAccuracy(test_target))
+
+    trainer.run()
+
+train = chainer.datasets.TupleDataset(train_data, train_target)
 train_iter = chainer.iterators.SerialIterator(train, 100)
+test_iter = chainer.iterators.SerialIterator(test, len(test_data), repeat=False, shuffle=False)
+
+S.load_npz('learned_model', model)
+S.load_npz('learned_opt', optimizer)
 
 updater = training.StandardUpdater(train_iter, optimizer)
-trainer = training.Trainer(updater, (30, 'epoch'), 'HEL')
+trainer = training.Trainer(updater, (100, 'epoch'), 'HEL')
 
 trainer.extend(extensions.Evaluator(test_iter, model))
-trainer.extend(extensions.LogReport(log_name='hel'))
+trainer.extend(extensions.LogReport(log_name='no_hel'))
 trainer.extend(extensions.PrintReport(
 ['epoch', 'main/loss', 'validation/main/loss', 'main/accuracy', 'validation/main/accuracy']))
 trainer.extend(extensions.ProgressBar())
-trainer.extend(O.Validation(test_iter, model))
-trainer.extend(O.BysAccuracy(test_target))
+#trainer.extend(O.Validation(test_iter, model))
+#trainer.extend(O.BysAccuracy(test_target))
 
 trainer.run()

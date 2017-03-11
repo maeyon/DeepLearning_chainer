@@ -2,6 +2,7 @@ import numpy as np
 import chainer
 import chainer.functions as F
 import chainer.links as L
+import chainer.serializers as S
 from chainer import training
 from chainer.training import extensions
 import original as O
@@ -30,6 +31,8 @@ train_data /= 255.0
 train = chainer.datasets.TupleDataset(train_data, train_target)
 train_iter = chainer.iterators.SerialIterator(train, 100)
 
+#train_entr_iter = chainer.iterators.SerialIterator(train, len(train), repeat=False, shuffle=False)
+
 test_data = []
 test_target = []
 
@@ -46,25 +49,30 @@ test_data /= 255.0
 test = chainer.datasets.TupleDataset(test_data, test_target)
 test_iter = chainer.iterators.SerialIterator(test, len(test_data), repeat=False, shuffle=False)
 
-np.save('bayesian.npy', np.zeros(len(test_data) * 5).reshape(len(test_data), 5))
-with open('accuracy.csv', 'w'):
-    pass
-
+#np.save('bayesian.npy', np.zeros(len(train_data) * 5).reshape(len(train_data), 5))
+#with open('accuracy.csv', 'w'):
+#    pass
 
 class Cifar(chainer.Chain):
-	def __init__(self):
-		super(Cifar, self).__init__(
-		    conv1 = L.Convolution2D(3, 32, 3, pad=1),
-		    conv2 = L.Convolution2D(32, 32, 3, pad=1),
-		    l1 = L.Linear(None, 512),
-		    l2 = L.Linear(None, 5))
-	
-	def __call__(self, x):
-		h = F.max_pooling_2d(F.relu(self.conv1(x)), 2)
-		h = F.max_pooling_2d(F.relu(self.conv2(h)), 2)
-		h = F.dropout(F.relu(self.l1(h)))
-		return self.l2(h)
-		
+    def __init__(self):
+        super(Cifar, self).__init__(
+            conv1 = L.Convolution2D(3, 32, 3, pad=1),
+            conv2 = L.Convolution2D(32, 32, 3, pad=1),
+            l1 = L.Linear(None, 512),
+            l2 = L.Linear(None, 5),
+            bnorm1 = L.BatchNormalization(32),
+            bnorm2 = L.BatchNormalization(32))
+        
+    def __call__(self, x):
+        h = F.relu(self.conv1(x))
+        h = self.bnorm1(h)
+        h = F.max_pooling_2d(h, 2)
+        h = F.relu(self.conv2(h))
+        h = self.bnorm2(h)
+        h = F.max_pooling_2d(h, 2)
+        h = F.dropout(F.relu(self.l1(h)))
+        return self.l2(h)
+    
 class SGLD(chainer.optimizer.GradientMethod):
     def __init__(self, n=500, eta=0.001, eps=1e-4, weight=1e-4):
         self.n = n
@@ -88,40 +96,65 @@ model = O.Classifier(Cifar())
 optimizer = SGLD()
 optimizer.setup(model)
 
-updater = training.StandardUpdater(train_iter, optimizer)
-trainer = training.Trainer(updater, (5, 'epoch'), 'SGLDbef')
+#updater = training.StandardUpdater(train_iter, optimizer)
+#trainer = training.Trainer(updater, (10, 'epoch'), 'HEL')
 
-trainer.extend(extensions.Evaluator(test_iter, model))
-trainer.extend(extensions.LogReport())
-trainer.extend(extensions.PrintReport(
-['epoch', 'main/loss', 'validation/main/loss', 'main/accuracy', 'validation/main/accuracy']))
-trainer.extend(extensions.ProgressBar())
-trainer.extend(O.Validation(test_iter, model))
-trainer.extend(O.BysAccuracy(test_target))
+#trainer.extend(extensions.Evaluator(test_iter, model))
+#trainer.extend(extensions.LogReport())
+#trainer.extend(extensions.PrintReport(['epoch', 'main/loss', 'validation/main/loss', 'main/accuracy', 'validation/main/accuracy']))
+#trainer.extend(extensions.ProgressBar())
+#trainer.extend(O.Validation(train_entr_iter, model))
+#trainer.extend(O.BysAccuracy(test_target))
 
-trainer.run()
+#trainer.run()
 
-p = np.load('bayesian.npy').astype(np.float32)
+p = np.load('HEL/bayesian.npy').astype(np.float32)
 p /= p.sum(axis=1, keepdims=True)
 y = p.argmax(axis=1)
 p[p < 1e-30] = 1e-30
 entropy = -np.sum(p * np.log(p), axis=1)
-np.savetxt('SGLDdata.csv', np.vstack([entropy, y, test_target]).T, delimiter=',')
+np.savetxt('SGLDdata.csv', np.vstack([entropy, y, train_target]).T, delimiter=',')
 
-index = np.argsort(entropy)[-1:-1001:-1]
+index = np.argsort(entropy)
+#S.save_npz('learned_model', model)
+#S.save_npz('learned_opt', optimizer)
 
-train = chainer.datasets.TupleDataset(test_data[index], train_target[index])
+for i in xrange(1, 5):
+    train = chainer.datasets.TupleDataset(train_data[index[-1:-5000*i-1:-1]], train_target[index[-1:-5000*i-1:-1]])
+    train_iter = chainer.iterators.SerialIterator(train, 100)
+    test_iter = chainer.iterators.SerialIterator(test, len(test_data), repeat=False, shuffle=False)
+
+    S.load_npz('learned_model', model)
+    S.load_npz('learned_opt', optimizer)
+
+    updater = training.StandardUpdater(train_iter, optimizer)
+    trainer = training.Trainer(updater, (20, 'epoch'), 'HEL')
+
+    trainer.extend(extensions.Evaluator(test_iter, model))
+    trainer.extend(extensions.LogReport(log_name='hel_{}'.format(i)))
+    trainer.extend(extensions.PrintReport(['epoch', 'main/loss', 'validation/main/loss', 'main/accuracy', 'validation/main/accuracy']))
+    trainer.extend(extensions.ProgressBar())
+    #trainer.extend(O.Validation(test_iter, model))
+    #trainer.extend(O.BysAccuracy(test_target))
+
+    trainer.run()
+
+train = chainer.datasets.TupleDataset(train_data, train_target)
 train_iter = chainer.iterators.SerialIterator(train, 100)
+test_iter = chainer.iterators.SerialIterator(test, len(test_data), repeat=False, shuffle=False)
+
+S.load_npz('learned_model', model)
+S.load_npz('learned_opt', optimizer)
 
 updater = training.StandardUpdater(train_iter, optimizer)
-trainer = training.Trainer(updater, (50, 'epoch'), 'SGLDaft')
+trainer = training.Trainer(updater, (20, 'epoch'), 'HEL')
 
 trainer.extend(extensions.Evaluator(test_iter, model))
-trainer.extend(extensions.LogReport())
+trainer.extend(extensions.LogReport(log_name='no_hel'))
 trainer.extend(extensions.PrintReport(
 ['epoch', 'main/loss', 'validation/main/loss', 'main/accuracy', 'validation/main/accuracy']))
 trainer.extend(extensions.ProgressBar())
-trainer.extend(O.Validation(test_iter, model))
-trainer.extend(O.BysAccuracy(test_target))
+#trainer.extend(O.Validation(test_iter, model))
+#trainer.extend(O.BysAccuracy(test_target))
 
 trainer.run()

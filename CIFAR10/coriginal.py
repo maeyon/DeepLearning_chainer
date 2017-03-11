@@ -47,9 +47,12 @@ class Classifier(link.Chain):
         y = self.predictor(*x).data
         J = y.argmax(axis=1)
         return J
+    
+    def fwdx(self, x):
+        return self.predictor(*x)
         
 class Validation(chainer.training.extensions.Evaluator):
-    trigger = 10, 'iteration'
+    trigger = 1, 'iteration'
     default_name = 'validation'
     
     def __init__(self, iterator, target):
