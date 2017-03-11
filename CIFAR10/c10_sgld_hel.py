@@ -48,8 +48,6 @@ test = chainer.datasets.TupleDataset(test_data, test_target)
 test_iter = chainer.iterators.SerialIterator(test, len(test_data), repeat=False, shuffle=False)
 
 xp.save('bayesian.npy', xp.zeros(len(train_data) * 10).reshape(len(train_data), 10))
-#with open('accuracy.csv', 'w'):
-#    pass
 
 
 class Cifar(chainer.Chain):
