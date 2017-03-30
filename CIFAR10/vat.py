@@ -1,30 +1,14 @@
-# coding: utf-8
-
-# In[1]:
-
-#import sys
-#import cPickle as pickle
 import datetime, math, sys, time
 
-#from sklearn.datasets import fetch_mldata
 import numpy as np
 
 import chainer
-#from chainer import serializers
+from chainer import serializers
 import chainer.functions as F
 import chainer.links as L
-from chainer import FunctionSet, Variable, optimizers, cuda
-from chainer import training
+from chainer import Variable, cuda, training
 from chainer.training import extensions
-import coriginal as C
 
-#from load_mnist import *
-'''
-N_train_labeled = 100
-N_train_unlabeled = 60000
-N_test = 10000
-train_l, train_ul, test_set = load_mnist(scale=1.0/128.0, shift=-1.0, N_train_labeled=N_train_labeled, N_train_unlabeled=N_train_unlabeled, N_test=N_test)
-'''
 cuda.get_device(0).use()
 xp = cuda.cupy
 
@@ -64,48 +48,6 @@ test_data /= 255.0
 test = chainer.datasets.TupleDataset(test_data, test_target)
 test_iter = chainer.iterators.SerialIterator(test, len(test_data), repeat=False, shuffle=False)
 
-
-class Cifar(chainer.Chain):
-	def __init__(self):
-		super(Cifar, self).__init__(
-		    conv1 = L.Convolution2D(3, 32, 3, pad=1),
-		    conv2 = L.Convolution2D(32, 32, 3, pad=1),
-		    l1 = L.Linear(None, 512),
-		    l2 = L.Linear(None, 10))
-	
-	def __call__(self, x):
-		h = F.max_pooling_2d(F.relu(self.conv1(x)), 2)
-		h = F.max_pooling_2d(F.relu(self.conv2(h)), 2)
-		h = F.dropout(F.relu(self.l1(h)))
-		return self.l2(h)
-		
-class SGLD(chainer.optimizer.GradientMethod):
-    def __init__(self, eta=0.001, eps=1e-4, weight=1e-4):
-        self.eta = eta
-        self.eps = eps
-        self.weight = weight
-    
-    @property
-    def lr(self):
-        lr = self.eta / xp.power(1. + self.t, 0.55).astype(xp.float32)
-        if lr > self.eps:
-        	return lr
-        else:
-        	return self.eps
-    
-    def update_one_cpu(self, param, state):
-        g = param.grad
-        param.data -= 0.5 * self.lr * (500 * g + self.weight * param.data) + np.random.normal(0, self.lr, g.shape)
-        
-    def update_one_gpu(self, param, state):
-        gauss = xp.random.normal(0, self.lr, param.shape)
-        cuda.elementwise(
-            'T grad, T lr, T weight, T gauss',
-            'T param',
-            'param -= 0.5 * lr * (500 * grad + weight * param) + gauss;',
-            'sgld')(param.grad, self.lr, self.weight, gauss, param.data)
-
-
 class KL_multinomial(chainer.function.Function):
 
     """ KL divergence between multinomial distributions """
@@ -131,9 +73,6 @@ class KL_multinomial(chainer.function.Function):
         p, q = inputs
         dq = -np.float32(1.0) * p / (np.float32(1e-8) + q) / np.float32(p.shape[0]) * grads[0]
         return cuda.cupy.zeros_like(p), dq
-
-def kl(p,q):
-    return KL_multinomial()(F.softmax(p),F.softmax(q))
 
 def kl(p,q):
     return KL_multinomial()(p,q)
@@ -204,6 +143,7 @@ class Encoder(chainer.Chain):
         y = self.l6(h)
 
         return y
+'''
 
 def loss_labeled(x, t):
     y = enc(x, test=False)
@@ -219,30 +159,64 @@ def loss_test(x, t):
     y = enc(x, test=True)
     L, acc = F.softmax_cross_entropy(y, t), F.accuracy(y, t)
     return L, acc
-'''
 
-def lf(x, t):
-    y = model.fwdx(x)
-    L = F.softmax_cross_entropy(y, t) + vat(model, distance, x.data)
-    return L
+class Cifar(chainer.Chain):
+	def __init__(self):
+		super(Cifar, self).__init__(
+		    conv1 = L.Convolution2D(3, 32, 3, pad=1),
+		    conv2 = L.Convolution2D(32, 32, 3, pad=1),
+		    l1 = L.Linear(None, 512),
+		    l2 = L.Linear(None, 10))
+	
+	def __call__(self, x):
+		h = F.max_pooling_2d(F.relu(self.conv1(x)), 2)
+		h = F.max_pooling_2d(F.relu(self.conv2(h)), 2)
+		h = F.dropout(F.relu(self.l1(h)))
+		return self.l2(h)
+		
+class SGLD(chainer.optimizer.GradientMethod):
+    def __init__(self, eta=0.001, eps=1e-4, weight=1e-4):
+        self.eta = eta
+        self.eps = eps
+        self.weight = weight
+    
+    @property
+    def lr(self):
+        lr = self.eta / xp.power(1. + self.t, 0.55).astype(xp.float32)
+        if lr > self.eps:
+        	return lr
+        else:
+        	return self.eps
+    
+    def update_one_cpu(self, param, state):
+        g = param.grad
+        param.data -= 0.5 * self.lr * (500 * g + self.weight * param.data) + np.random.normal(0, self.lr, g.shape)
+        
+    def update_one_gpu(self, param, state):
+        gauss = xp.random.normal(0, self.lr, param.shape)
+        cuda.elementwise(
+            'T grad, T lr, T weight, T gauss',
+            'T param',
+            'param -= 0.5 * lr * (500 * grad + weight * param) + gauss;',
+            'sgld')(param.grad, self.lr, self.weight, gauss, param.data)
 
-model = C.Classifier(Cifar(), lossfun=lf)
+model = L.Classifier(Cifar())
+cuda.get_device(0).use()
 model.to_gpu()
 optimizer = SGLD()
 optimizer.setup(model)
 
 updater = training.StandardUpdater(train_iter, optimizer, device=0)
-trainer = training.Trainer(updater, (50, 'epoch'), 'SGLD')
+trainer = training.Trainer(updater, (50, 'epoch'), 'HEL')
 
 trainer.extend(extensions.Evaluator(test_iter, model, device=0))
 trainer.extend(extensions.LogReport())
 trainer.extend(extensions.PrintReport(
 ['epoch', 'main/loss', 'validation/main/loss', 'main/accuracy', 'validation/main/accuracy']))
 trainer.extend(extensions.ProgressBar())
-#trainer.extend(C.Validation(test_iter, model))
-#trainer.extend(C.BysAccuracy(test_target))
 
 trainer.run()
+
 '''
 enc = Encoder()
 enc.to_gpu()

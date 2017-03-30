@@ -1,5 +1,4 @@
 import numpy as np
-from scipy.sparse import coo_matrix
 import chainer.functions as F
 import chainer.optimizer
 from chainer.functions.evaluation import accuracy
@@ -43,21 +42,17 @@ class Classifier(link.Chain):
         assert len(args) >= 2
         x = args[:-1]
         t = args[-1]
-        y = self.predictor(*x).data
-        I = np.arange(len(t))
-        J = y.argmax(axis=1)
-        V = np.ones(len(t))
-        return coo_matrix((V, (I, J)), shape=y.shape)
+        y = self.predictor(*x)
+        p = F.softmax(y)
+        return p.data
     
-    def entforward(self, *x):
-        y = self.predictor(*x).data
-        I = np.arange(len(y))
-        J = y.argmax(axis=1)
-        V = np.ones(len(y))
-        return coo_matrix((V, (I, J)), shape=y.shape)
+    def fwdx(self, *x):
+        y = self.predictor(*x)
+        p = F.softmax(y)
+        return p.data
         
 class Validation(chainer.training.extensions.Evaluator):
-    trigger = 10, 'iteration'
+    trigger = 1, 'iteration'
     default_name = 'validation'
     
     def __init__(self, iterator, target, ent):
@@ -75,21 +70,32 @@ class Validation(chainer.training.extensions.Evaluator):
         target = self._targets['main']
         
         it = copy.copy(iterator)
+        i = 0
+        bys = np.load('bayesian.npy')
 
         for batch in it:
             in_arrays = chainer.dataset.convert.concat_examples(batch, None)
             if isinstance(in_arrays, tuple):
                 in_vars = tuple(Variable(x, volatile='on') for x in in_arrays)
-                np.save('bayesian.npy', np.load('bayesian.npy') + target.forward(*in_vars))
+                p = target.forward(*in_vars)
+                    
             elif isinstance(in_arrays, dict):
                 in_vars = {key: Variable(x, volatile='on') for key, x in iteritems(in_arrays)}
-                np.save('bayesian.npy', np.load('bayesian.npy') + target.forward(**in_vars))
+                p = target.forward(**in_vars)
+                    
             else:
                 in_vars = Variable(in_arrays, volatile='on')
-                np.save('bayesian.npy', np.load('bayesian.npy') + target.forward(in_vars))
-                
+                p = target.forward(in_vars)
+            
+            bys[i:i+len(batch)] += p
+            i += len(batch)
+            
+        np.save('bayesian.npy', bys)
+        
         x = Variable(self.ent, volatile='on')
-        np.save('entropy.npy', np.load('entropy.npy') + target.entforward(x))
+        px = target.fwdx(x)
+        px[px < 1e-10] = 1e-10
+        np.save('entropy.npy', np.load('entropy.npy') - np.sum(px * np.log(px), axis=1))
                 
 class BysAccuracy(chainer.training.extensions.Evaluator):
     trigger = 1, 'epoch'

@@ -45,6 +45,7 @@ test = chainer.datasets.TupleDataset(test_data, test_target)
 test_iter = chainer.iterators.SerialIterator(test, len(test_data), repeat=False, shuffle=False)
 
 xp.save('bayesian.npy', xp.zeros(len(test_data) * 10).reshape(len(test_data), 10))
+xp.save('entropy.npy', xp.zeros(len(test_data)))
 with open('accuracy.csv', 'w'):
     pass
 
@@ -82,7 +83,7 @@ class SGLD(chainer.optimizer.GradientMethod):
         param.data -= 0.5 * self.lr * (500 * g + self.weight * param.data) + np.random.normal(0, self.lr, g.shape)
         
     def update_one_gpu(self, param, state):
-        gauss = xp.random.normal(0, self.lr, param.shape)
+        gauss = xp.random.normal(0, self.lr, param.shape).astype(xp.float32)
         cuda.elementwise(
             'T grad, T lr, T weight, T gauss',
             'T param',
@@ -109,8 +110,6 @@ trainer.extend(C.BysAccuracy(test_target))
 trainer.run()
 
 p = xp.load('bayesian.npy').astype(xp.float32)
-p /= p.sum(axis=1, keepdims=True)
 y = p.argmax(axis=1)
-p[p < 1e-30] = 1e-30
-entropy = -xp.sum(p * xp.log(p), axis=1)
+entropy = xp.load('entropy.npy').astype(xp.float32) / 25000 / xp.log(10)
 xp.save('SGLDdata.npy', xp.vstack([entropy, y, test_target]).T)

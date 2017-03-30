@@ -8,14 +8,14 @@ from chainer.training import extensions
 import original as O
 
 train, test = np.load('train.npy'), np.load('test.npy')
-X = np.arange(-4., 4., 0.02)
-Y = np.arange(-4., 4., 0.02)
+X = np.arange(-4., 4., 0.05)
+Y = np.arange(-4., 4., 0.05)
 X, Y = np.meshgrid(X, Y)
 ent = np.vstack((X.flatten(), Y.flatten())).T
 matrix = np.arange(-500, 500).reshape(2, 500) / 500.
 
 np.save('bayesian.npy', np.zeros(len(test) * 4).reshape(len(test), 4))
-np.save('entropy.npy', np.zeros(160000 * 4).reshape(160000, 4))
+np.save('entropy.npy', np.zeros(25600))
 with open('accuracy.csv', 'w'):
     pass
 label = []
@@ -55,7 +55,7 @@ optimizer = chainer.optimizers.SGD()
 optimizer.setup(model)
 
 updater = training.StandardUpdater(train_iter, optimizer)
-trainer = training.Trainer(updater, (200, 'epoch'), out='SGD')
+trainer = training.Trainer(updater, (100, 'epoch'), out='SGD')
 
 trainer.extend(extensions.Evaluator(test_iter, model))
 trainer.extend(extensions.LogReport())
@@ -68,15 +68,5 @@ trainer.extend(O.BysAccuracy(label))
 trainer.run()
 
 p = np.load('bayesian.npy').astype(np.float32)
-p /= p.sum(axis=1, keepdims=True)
 y = p.argmax(axis=1)
-p[p < 1e-30] = 1e-30
-entropy = -np.sum(p * np.log(p), axis=1)
-np.savetxt('SGDdata.csv', np.vstack([entropy, y, label]).T, delimiter=',')
-
-p = np.load('entropy.npy').astype(np.float32)
-p /= p.sum(axis=1, keepdims=True)
-y = p.argmax(axis=1)
-p[p < 1e-10] = 1e-10
-entropy = -np.sum(p * np.log(p), axis=1)
-np.save('entropy.npy', entropy)
+np.save('SGDdata.npy', np.vstack([y, label]).T)

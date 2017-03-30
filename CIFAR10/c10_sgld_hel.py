@@ -31,7 +31,7 @@ train_data /= 255.0
 
 train = chainer.datasets.TupleDataset(train_data, train_target)
 train_iter = chainer.iterators.SerialIterator(train, 100)
-train_entr_iter = chainer.iterators.SerialIterator(train, len(train), repeat=False, shuffle=False)
+train_entr_iter = chainer.iterators.SerialIterator(train, 10000, repeat=False, shuffle=False)
 
 test_data = []
 test_target = []
@@ -45,10 +45,13 @@ test_target = xp.array(test_target).astype(xp.int32)
 test_data /= 255.0
 
 test = chainer.datasets.TupleDataset(test_data, test_target)
-test_iter = chainer.iterators.SerialIterator(test, len(test_data), repeat=False, shuffle=False)
+test_iter = chainer.iterators.SerialIterator(test, 100, repeat=False, shuffle=False)
 
-xp.save('bayesian.npy', xp.zeros(len(train_data) * 10).reshape(len(train_data), 10))
-
+xp.save('bayesian.npy', xp.zeros(len(test_data) * 10).reshape(len(test_data), 10))
+xp.save('entropy.npy', xp.zeros(len(test_data)))
+xp.save('entr.npy', xp.zeros(len(train_data)))
+with open('accuracy.csv', 'w'):
+    pass
 
 class Cifar(chainer.Chain):
     def __init__(self):
@@ -103,24 +106,19 @@ optimizer = SGLD()
 optimizer.setup(model)
 
 updater = training.StandardUpdater(train_iter, optimizer, device=0)
-trainer = training.Trainer(updater, (20, 'epoch'), 'HEL')
+trainer = training.Trainer(updater, (10, 'epoch'), 'HEL')
 
 trainer.extend(extensions.Evaluator(test_iter, model, device=0))
 trainer.extend(extensions.LogReport())
 trainer.extend(extensions.PrintReport(
 ['epoch', 'main/loss', 'validation/main/loss', 'main/accuracy', 'validation/main/accuracy']))
 trainer.extend(extensions.ProgressBar())
-trainer.extend(C.Validation(train_entr_iter, model))
-#trainer.extend(C.BysAccuracy(test_target))
+trainer.extend(C.Validation(test_iter, model))
+trainer.extend(C.BysAccuracy(test_target))
+trainer.extend(C.HelTrain(train_entr_iter, model))
 
 trainer.run()
-
-p = xp.load('bayesian.npy').astype(xp.float32)
-p /= p.sum(axis=1, keepdims=True)
-y = p.argmax(axis=1)
-p[p < 1e-30] = 1e-30
-entropy = -xp.sum(p * xp.log(p), axis=1)
-xp.save('SGLDdata.npy', xp.vstack([entropy, y, test_target]).T)
+entropy = np.load('entr.npy').astype(np.float32)
 
 entropy_cpu = cuda.to_cpu(entropy)
 index_cpu = np.argsort(entropy_cpu)
@@ -128,6 +126,13 @@ index = cuda.to_gpu(index_cpu, device=0)
 
 S.save_npz('learned_model', model)
 S.save_npz('learned_opt', optimizer)
+
+bysac = np.loadtxt('accuracy.csv', delimiter=',')
+bys = np.load('bayesian.npy')
+entropy = np.load('entropy.npy')
+
+with open('accuracy.csv', 'w'):
+    pass
 
 for i in xrange(1, 5):
     train = chainer.datasets.TupleDataset(train_data[index[-1:-10000*i-1:-1]], train_target[index[-1:-10000*i-1:-1]])
@@ -137,17 +142,20 @@ for i in xrange(1, 5):
     S.load_npz('learned_model', model)
     S.load_npz('learned_opt', optimizer)
 
-    updater = training.StandardUpdater(train_iter, optimizer)
-    trainer = training.Trainer(updater, (100, 'epoch'), 'HEL')
+    updater = training.StandardUpdater(train_iter, optimizer, device=0)
+    trainer = training.Trainer(updater, (40, 'epoch'), 'HEL')
 
-    trainer.extend(extensions.Evaluator(test_iter, model))
+    trainer.extend(extensions.Evaluator(test_iter, model, device=0))
     trainer.extend(extensions.LogReport(log_name='hel_{}'.format(i)))
     trainer.extend(extensions.PrintReport(['epoch', 'main/loss', 'validation/main/loss', 'main/accuracy', 'validation/main/accuracy']))
     trainer.extend(extensions.ProgressBar())
-    #trainer.extend(O.Validation(test_iter, model))
-    #trainer.extend(O.BysAccuracy(test_target))
+    trainer.extend(C.Validation(test_iter, model))
+    trainer.extend(C.BysAccuracy(test_target))
 
     trainer.run()
+    
+    np.savetxt('acc_{}.csv'.format(i), np.loadtxt('accuracy.csv', delimiter=','), delimiter=',')
+    np.savetxt('accuracy.csv', bysac, delimiter=',')
 
 train = chainer.datasets.TupleDataset(train_data, train_target)
 train_iter = chainer.iterators.SerialIterator(train, 100)
@@ -156,15 +164,17 @@ test_iter = chainer.iterators.SerialIterator(test, len(test_data), repeat=False,
 S.load_npz('learned_model', model)
 S.load_npz('learned_opt', optimizer)
 
-updater = training.StandardUpdater(train_iter, optimizer)
-trainer = training.Trainer(updater, (100, 'epoch'), 'HEL')
+np.save('entropy.npy', entropy)
 
-trainer.extend(extensions.Evaluator(test_iter, model))
+updater = training.StandardUpdater(train_iter, optimizer, device=0)
+trainer = training.Trainer(updater, (40, 'epoch'), 'HEL')
+
+trainer.extend(extensions.Evaluator(test_iter, model, device=0))
 trainer.extend(extensions.LogReport(log_name='no_hel'))
 trainer.extend(extensions.PrintReport(
 ['epoch', 'main/loss', 'validation/main/loss', 'main/accuracy', 'validation/main/accuracy']))
 trainer.extend(extensions.ProgressBar())
-#trainer.extend(O.Validation(test_iter, model))
-#trainer.extend(O.BysAccuracy(test_target))
+trainer.extend(C.Validation(test_iter, model))
+trainer.extend(C.BysAccuracy(test_target))
 
 trainer.run()

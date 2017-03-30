@@ -45,6 +45,7 @@ test = chainer.datasets.TupleDataset(test_data, test_target)
 test_iter = chainer.iterators.SerialIterator(test, len(test_data), repeat=False, shuffle=False)
 
 xp.save('bayesian.npy', xp.zeros(len(test_data) * 10).reshape(len(test_data), 10))
+xp.save('entropy.npy', xp.zeros(len(test_data)))
 with open('accuracy.csv', 'w'):
     pass
 
@@ -84,8 +85,6 @@ trainer.extend(C.BysAccuracy(test_target))
 trainer.run()
 
 p = xp.load('bayesian.npy').astype(xp.float32)
-p /= p.sum(axis=1, keepdims=True)
 y = p.argmax(axis=1)
-p[p < 1e-30] = 1e-30
-entropy = -xp.sum(p * xp.log(p), axis=1)
+entropy = xp.load('entropy.npy').astype(xp.float32) / 25000 / xp.log(10)
 xp.save('SGDdata.npy', xp.vstack([entropy, y, test_target]).T)
